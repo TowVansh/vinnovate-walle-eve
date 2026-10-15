@@ -287,7 +287,7 @@ class Agent:
 
         scan_every = 2 if best_p > 0.15 else 4
         if best_p < 0.6 and self.moves_since_scan >= scan_every:  # confident: save battery, just drive there
-            return "scan", None, f"{self.moves_since_scan} moves since last scan (scan every {scan_every} at max belief {best_p:.2f})"
+            return "scan", None, ("first scan of the mission" if self.moves_since_scan >= 99 else f"{self.moves_since_scan} moves since last scan") + f" (scan every {scan_every} at max belief {best_p:.2f})"
 
         # utility = belief mass near a cell, discounted by travel; only cells we can reach and still get home from
         here = self.bfs(self.pos)
@@ -472,9 +472,11 @@ def render_map(cfg, env, agent, trace):
     return "\n".join([border] + ["|" + r + "|" for r in rows] + [border])
 
 
-def write_replay(cfg, trace, path):
-    """Self-contained HTML replay of the mission (path, belief top-3, battery, reasoning)."""
-    html = REPLAY_HTML.replace("__CFG__", json.dumps(cfg)).replace("__TRACE__", json.dumps(trace))
+def write_replay(cfg, trace, path, more=()):
+    """Self-contained HTML replay (path, belief top-3, battery, reasoning). `more` adds extra (cfg, trace, found) missions."""
+    found = trace and trace[-1]["action"] == "contact" and trace[-1]["obs"].get("contact")
+    missions = [{"cfg": cfg, "trace": trace, "found": bool(found)}] + [{"cfg": c, "trace": t, "found": f} for c, t, f in more]
+    html = REPLAY_HTML.replace("__MISSIONS__", json.dumps(missions, separators=(",", ":")))
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
 
@@ -550,12 +552,29 @@ def main():
     g.add_argument("--seed", type=int, default=0)
     b = sub.add_parser("bench")
     b.add_argument("--n", type=int, default=100)
+    rnd = sub.add_parser("random", help="run N fresh random missions into one replay page with a Random mission button")
+    rnd.add_argument("--n", type=int, default=20)
+    rnd.add_argument("--out", default="out")
+    rnd.add_argument("--no-open", action="store_true")
     a = ap.parse_args()
 
     if a.cmd == "gen":
         print(json.dumps(random_config(a.seed), indent=1))
     elif a.cmd == "bench":
         print(json.dumps(bench(a.n), indent=2))
+    elif a.cmd == "random":
+        os.makedirs(a.out, exist_ok=True)
+        runs = []
+        for seed in random.sample(range(1, 10**6), a.n):  # new maps every time you run it
+            cfg = random_config(seed)
+            env, agent, trace = run_mission(cfg)
+            runs.append((cfg, trace, env.found))
+        path = os.path.join(a.out, "random_missions.html")
+        write_replay(runs[0][0], runs[0][1], path, more=runs[1:])
+        print(f"{sum(f for _, _, f in runs)}/{a.n} missions found EVE. Wrote {path}")
+        if not a.no_open:
+            import webbrowser
+            webbrowser.open("file://" + os.path.abspath(path))
     else:
         with open(a.config) as f:
             if a.config.endswith((".yaml", ".yml")):
@@ -576,15 +595,26 @@ def main():
 
 REPLAY_HTML = r"""<!doctype html><html><head><meta charset="utf-8"><title>WALL-E mission replay</title>
 <style>body{font:14px system-ui;background:#1b1a17;color:#eee;margin:16px}canvas{background:#2a2722;image-rendering:pixelated;max-width:100%}
-#log{font-family:monospace;white-space:pre-wrap;background:#111;padding:8px;height:120px;overflow:auto}button,input{font-size:14px}</style></head><body>
+#log{font-family:monospace;white-space:pre-wrap;background:#111;padding:8px;height:120px;overflow:auto}button,input,select{font-size:14px}
+button{background:#facc15;border:0;border-radius:6px;padding:6px 12px;font-weight:600;cursor:pointer}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+#outcome{font-weight:600}</style></head><body>
 <h2>WALL-E mission replay</h2>
-<div><button id="play">Play</button> <input id="t" type="range" min="0" value="0" style="width:60%"> <span id="info"></span></div>
+<div class="row"><button id="rand">🎲 Random mission</button><select id="pick"></select><span id="outcome"></span></div>
+<div class="row"><button id="play">▶ Play</button> <input id="t" type="range" min="0" value="0" style="flex:1;min-width:200px"> <span id="info"></span></div>
 <canvas id="c"></canvas><div id="log"></div>
 <p>Yellow = WALL-E, trail = path, green = base, pink = EVE (truth), red = decoy, blue = clue, orange squares = agent's top-3 belief.</p>
 <script>
-const cfg=__CFG__, trace=__TRACE__, S=28, W=cfg.map.width, H=cfg.map.height;
-const cv=document.getElementById('c'), g=cv.getContext('2d'); cv.width=W*S; cv.height=H*S;
-const t=document.getElementById('t'); t.max=trace.length-1;
+const missions=__MISSIONS__, S=28;
+let cfg, trace, cur=-1, timer=null;
+const cv=document.getElementById('c'), g=cv.getContext('2d'), t=document.getElementById('t'), pick=document.getElementById('pick');
+missions.forEach((m,i)=>pick.insertAdjacentHTML('beforeend',`<option value="${i}">${m.cfg.name} (${m.found?'found':'not found'})</option>`));
+function load(i){
+ cur=i; pick.value=i; cfg=missions[i].cfg; trace=missions[i].trace;
+ cv.width=cfg.map.width*S; cv.height=cfg.map.height*S; t.max=trace.length-1; t.value=0;
+ const m=missions[i];
+ document.getElementById('outcome').textContent=`${m.found?'✅ EVE found':'❌ EVE not found'} in ${trace.length} steps${cfg.decoys?' · decoy beacon on this map':''}`;
+ stop(); draw(0);
+}
 function cell(p,col,pad=2){g.fillStyle=col;g.fillRect(p[0]*S+pad,p[1]*S+pad,S-2*pad,S-2*pad)}
 function draw(i){g.clearRect(0,0,cv.width,cv.height);
  cfg.map.walls.forEach(w=>cell(w,'#555',0));
@@ -596,10 +626,15 @@ function draw(i){g.clearRect(0,0,cv.width,cv.height);
  cell(r.obs.pos,'#facc15',5);
  document.getElementById('info').textContent=`step ${i} | battery ${r.obs.battery} | time left ${r.obs.time_left} | mode ${r.mode}`;
  document.getElementById('log').textContent=trace.slice(Math.max(0,i-6),i+1).map(x=>`${x.t} ${x.action}${x.arg?' '+x.arg:''}: ${x.reason}`).join('\n');}
-t.oninput=()=>draw(+t.value); let timer=null;
-document.getElementById('play').onclick=()=>{if(timer){clearInterval(timer);timer=null;return}
- timer=setInterval(()=>{if(+t.value>=trace.length-1){clearInterval(timer);timer=null;return}t.value=+t.value+1;draw(+t.value)},80)};
-draw(0);
+function stop(){clearInterval(timer);timer=null;document.getElementById('play').textContent='▶ Play'}
+t.oninput=()=>draw(+t.value);
+document.getElementById('play').onclick=()=>{if(timer)return stop();
+ if(+t.value>=trace.length-1)t.value=0;
+ document.getElementById('play').textContent='⏸ Pause';
+ timer=setInterval(()=>{if(+t.value>=trace.length-1)return stop();t.value=+t.value+1;draw(+t.value)},60)};
+pick.onchange=()=>load(+pick.value);
+document.getElementById('rand').onclick=()=>{let i;do i=Math.floor(Math.random()*missions.length);while(missions.length>1&&i===cur);load(i);document.getElementById('play').click()};
+load(0);
 </script></body></html>"""
 
 if __name__ == "__main__":

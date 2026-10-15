@@ -6,6 +6,7 @@ An autonomous agent (WALL-E) explores a simulated grid world, reads a noisy beac
 python walle.py run configs/decoy_mission.json   # run one mission: writes the trace, the report and an HTML replay to out/
 python walle.py run configs/clean_mission.json
 python walle.py gen --seed 42 > configs/my.json  # generate a random mission
+python walle.py random                           # 20 brand-new random maps in one replay page, opens in the browser
 python walle.py bench --n 200                    # Bayesian agent vs reactive baseline on 200 random missions
 python test_walle.py                             # self-checks
 ```
@@ -14,6 +15,8 @@ Each run writes these files to `out/`:
 - `<name>_trace.jsonl`: one line per action, with the action, WALL-E's reasoning, the observation, his mode (search or return) and his top 3 location hypotheses.
 - `<name>_report.md`: the final mission report, with the outcome, the inferred location and status, confidence, the evidence log, the recommended next step and an ASCII map.
 - `<name>_replay.html`: open it in a browser for an animated replay of the path, the belief and the reasoning.
+
+`python walle.py random` writes `out/random_missions.html`: 20 fresh maps (different every time you run it) with a **🎲 Random mission** button and a dropdown to switch between them.
 
 ## Environment design
 
