@@ -1,0 +1,16 @@
+{
+  "bayes": {
+    "missions": 200,
+    "success_rate": 0.865,
+    "success_no_decoy": 0.97,
+    "success_with_decoy": 0.762,
+    "mean_time_when_found": 78.3
+  },
+  "reactive": {
+    "missions": 200,
+    "success_rate": 0.59,
+    "success_no_decoy": 0.727,
+    "success_with_decoy": 0.455,
+    "mean_time_when_found": 93.5
+  }
+}
