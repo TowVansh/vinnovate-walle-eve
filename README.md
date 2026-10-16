@@ -1,13 +1,19 @@
 # WALL-E and EVE's Signal
 
-An autonomous agent (WALL-E) explores a simulated grid world, reads a noisy beacon, picks up clues, manages a limited battery and time budget, and works out where EVE is and what state she is in. Everything is in one file, `walle.py`, using only the Python standard library.
+An autonomous agent (WALL-E) explores a simulated grid world, reads a noisy beacon, picks up clues, manages a limited battery and time budget, and works out where EVE is and what state she is in. The simulation and agent are in `walle.py` (standard library only). `plots.py` draws the figures with matplotlib.
+
+![Decoy mission: path, final belief, battery](out/decoy_mission_path.png)
+
+## Setup
+
+Python 3.9+. Optional: `pip install matplotlib` for the PNG figures (and `pyyaml` for YAML configs). Without matplotlib everything else still runs, including the HTML replay.
 
 ```
 python walle.py run configs/decoy_mission.json   # run one mission: writes the trace, the report and an HTML replay to out/
 python walle.py run configs/clean_mission.json
 python walle.py gen --seed 42 > configs/my.json  # generate a random mission
 python walle.py random                           # 20 brand-new random maps in one replay page, opens in the browser
-python walle.py bench --n 200                    # Bayesian agent vs reactive baseline on 200 random missions
+python walle.py bench --n 200                    # Bayesian agent vs reactive baseline on 200 random missions (+ out/bench.png)
 python test_walle.py                             # self-checks
 ```
 
@@ -15,6 +21,7 @@ Each run writes these files to `out/`:
 - `<name>_trace.jsonl`: one line per action, with the action, WALL-E's reasoning, the observation, his mode (search or return) and his top 3 location hypotheses.
 - `<name>_report.md`: the final mission report, with the outcome, the inferred location and status, confidence, the evidence log, the recommended next step and an ASCII map.
 - `<name>_replay.html`: open it in a browser for an animated replay of the path, the belief and the reasoning.
+- `<name>_path.png`: the path drawn on the map, coloured by time, with scans, failed contacts, clues, the decoy and the detected decoy zone. Next to it is the final belief heatmap, and below is battery and confidence over time.
 
 `python walle.py random` writes `out/random_missions.html`: 20 fresh maps (different every time you run it) with a **🎲 Random mission** button and a dropdown to switch between them.
 
@@ -48,10 +55,18 @@ The mission ends when EVE is found, the battery hits 0 or the time runs out.
 
 ## Results (200 random missions, `python walle.py bench --n 200`)
 
+![Benchmark](out/bench.png)
+
 | Agent | Overall | No decoy | With decoy | Mean time when found |
 |---|---|---|---|---|
 | Bayesian (this) | **86.5%** | **97.0%** | **76.2%** | 78.3 |
 | Reactive baseline (follow last bearing) | 59.0% | 72.7% | 45.5% | 93.5 |
+
+Raw numbers: `out/bench_results.json`. Sample traces, reports and figures for both included configs are in `out/`.
+
+### Sample outputs
+
+![Clean mission](out/clean_mission_path.png)
 
 The reactive baseline is a classical controller with no belief and no memory. It shows what the belief, the clues and the spoof detection add. The remaining failures are almost all decoy missions where EVE lies roughly in the same direction as the decoy, so the readings dropped as "decoy" also carried EVE's signal.
 

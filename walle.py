@@ -561,7 +561,17 @@ def main():
     if a.cmd == "gen":
         print(json.dumps(random_config(a.seed), indent=1))
     elif a.cmd == "bench":
-        print(json.dumps(bench(a.n), indent=2))
+        result = bench(a.n)
+        print(json.dumps(result, indent=2))
+        os.makedirs("out", exist_ok=True)
+        with open("out/bench_results.json", "w") as f:
+            json.dump(result, f, indent=2)
+        try:
+            from plots import plot_bench
+            plot_bench(result, "out/bench.png")
+            print("wrote out/bench_results.json, out/bench.png")
+        except ImportError:
+            pass
     elif a.cmd == "random":
         os.makedirs(a.out, exist_ok=True)
         runs = []
@@ -590,7 +600,14 @@ def main():
             f.write(report)
         write_replay(cfg, trace, stem + "_replay.html")
         sys.stdout.write(report)
-        print(f"\nwrote {stem}_trace.jsonl, {stem}_report.md, {stem}_replay.html")
+        written = f"{stem}_trace.jsonl, {stem}_report.md, {stem}_replay.html"
+        try:
+            from plots import plot_mission
+            plot_mission(cfg, env, agent, trace, stem + "_path.png")
+            written += f", {stem}_path.png"
+        except ImportError:
+            pass  # matplotlib not installed: the HTML replay still shows the path
+        print(f"\nwrote {written}")
 
 
 REPLAY_HTML = r"""<!doctype html><html><head><meta charset="utf-8"><title>WALL-E mission replay</title>
